@@ -39,7 +39,7 @@ Open Archiver is built on a modern, scalable, and maintainable technology stack:
 
 ### Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/). Docker must already be installed and running before `npm run local:up`; Node does not install Docker for you. Check with `docker --version` and `docker compose version`.
 - A server or local machine with at least 4GB of RAM (2GB of RAM if you use external Postgres, Redis (Valkey) and Meilisearch instances).
 - Optional: Node.js 22 or newer for the `npm run local:up` one-liner. If Node is not installed, use the Docker-only one-liner below.
 
@@ -67,6 +67,8 @@ Open Archiver is built on a modern, scalable, and maintainable technology stack:
     ```
 
     The generated `.env` exists so local service passwords, JWT signing, and encryption keys stay stable across restarts. It is not meant to defend against someone who already controls your laptop. The stack still binds the web UI to your laptop only (`127.0.0.1`), enables personal mode, and keeps heavier optional services like Apache Tika disabled by default.
+
+    If the launcher says Docker was not found, Docker is not installed or the `docker` command is not available in this terminal. If it says Docker Compose is not available, install Docker Compose v2 or Docker Desktop. After installing Docker Desktop, open/start it before running `npm run local:up` again; the generated `.env` will be reused.
 
     The containers run detached in the background, so you do not need to keep the terminal open after the command finishes. Stop them later with `npm run local:down` or `docker compose down`.
 

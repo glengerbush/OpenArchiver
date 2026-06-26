@@ -4,7 +4,7 @@ This guide will walk you through setting up Open Archiver using Docker Compose. 
 
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) installed on your server or local machine.
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) installed and running on your server or local machine. Node does not install Docker for you. Check with `docker --version` and `docker compose version`.
 - A server or local machine with at least 4GB of RAM (2GB of RAM if you use external Postgres, Redis (Valkey) and Meilisearch instances).
 - [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git) installed on your server or local machine.
 - Node.js 22 or newer for the local setup script. If Node is not installed, Docker can run the script with the command shown below.
@@ -44,6 +44,8 @@ This command:
 - Leaves Apache Tika disabled for the fastest lightweight local install.
 
 The generated `.env` is still useful for a local-only app because the service passwords, JWT signing secret, database-encryption key, and storage-encryption key must stay stable across restarts. It is not meant to defend against someone who already controls your laptop or can read your files.
+
+If the launcher says Docker was not found, Docker is not installed or the `docker` command is not available in this terminal. If it says Docker Compose is not available, install Docker Compose v2 or Docker Desktop. After installing Docker Desktop, open/start it before running `npm run local:up` again; the generated `.env` will be reused.
 
 The containers run detached in the background, so you do not need to keep the terminal open after the command finishes. Stop them later with `npm run local:down` or `docker compose down`.
 
