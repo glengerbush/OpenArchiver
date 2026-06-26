@@ -4,7 +4,7 @@ This guide provides instructions for upgrading your Open Archiver instance to th
 
 ## Checking for New Versions
 
-Open Archiver automatically checks for new versions and will display a notification in the footer of the web interface when an update is available. You can find a list of all releases and their release notes on the [GitHub Releases](https://github.com/LogicLabs-OU/OpenArchiver/releases) page.
+This local-first fork does not automatically check GitHub for new versions from the running app. To keep startup and page loads offline-friendly, check for new releases manually on the [GitHub Releases](https://github.com/glengerbush/OpenArchiver/releases) page or run the update commands below when you want to refresh the local stack.
 
 ## Upgrading Your Instance
 
