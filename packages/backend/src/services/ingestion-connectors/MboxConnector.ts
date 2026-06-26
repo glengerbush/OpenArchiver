@@ -11,9 +11,16 @@ import { logger } from '../../config/logger';
 import { getThreadId } from './helpers/utils';
 import { writeEmailToTempFile } from './helpers/tempFile';
 import { StorageService } from '../StorageService';
-import { Readable, Transform } from 'stream';
+import { Transform } from 'stream';
 import { createHash } from 'crypto';
 import { promises as fs, createReadStream } from 'fs';
+import { basename, join, relative } from 'path';
+
+type MboxInput = {
+	filePath: string;
+	sourcePath: string;
+	isLocal: boolean;
+};
 
 class MboxSplitter extends Transform {
 	private buffer: Buffer = Buffer.alloc(0);
@@ -67,36 +74,7 @@ export class MboxConnector implements IEmailConnector {
 
 	public async testConnection(): Promise<boolean> {
 		try {
-			const filePath = this.getFilePath();
-			if (!filePath) {
-				throw Error('Mbox file path not provided.');
-			}
-			if (!filePath.includes('.mbox')) {
-				throw Error('Provided file is not in the MBOX format.');
-			}
-
-			let fileExist = false;
-			if (this.credentials.localFilePath) {
-				try {
-					await fs.access(this.credentials.localFilePath);
-					fileExist = true;
-				} catch {
-					fileExist = false;
-				}
-			} else {
-				fileExist = await this.storage.exists(filePath);
-			}
-
-			if (!fileExist) {
-				if (this.credentials.localFilePath) {
-					throw Error(`Mbox file not found at path: ${this.credentials.localFilePath}`);
-				} else {
-					throw Error(
-						'Uploaded Mbox file not found. The upload may not have finished yet, or it failed.'
-					);
-				}
-			}
-
+			await this.getMboxInputs();
 			return true;
 		} catch (error) {
 			logger.error({ error, credentials: this.credentials }, 'Mbox file validation failed.');
@@ -108,11 +86,103 @@ export class MboxConnector implements IEmailConnector {
 		return this.credentials.localFilePath || this.credentials.uploadedFilePath || '';
 	}
 
-	private async getFileStream(): Promise<NodeJS.ReadableStream> {
-		if (this.credentials.localFilePath) {
-			return createReadStream(this.credentials.localFilePath);
+	private isMboxPath(filePath: string): boolean {
+		return filePath.toLowerCase().endsWith('.mbox');
+	}
+
+	private stripMboxExtension(filePath: string): string {
+		return filePath.replace(/\.mbox$/i, '');
+	}
+
+	private toSourcePath(filePath: string): string {
+		return this.stripMboxExtension(filePath)
+			.split(/[\\/]+/)
+			.filter(Boolean)
+			.join('/');
+	}
+
+	private async findLocalMboxFiles(directoryPath: string): Promise<string[]> {
+		const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+		const foundFiles: string[] = [];
+
+		for (const entry of entries) {
+			const entryPath = join(directoryPath, entry.name);
+
+			if (entry.isDirectory()) {
+				foundFiles.push(...(await this.findLocalMboxFiles(entryPath)));
+			} else if (entry.isFile() && this.isMboxPath(entry.name)) {
+				foundFiles.push(entryPath);
+			}
 		}
-		return this.storage.getStream(this.getFilePath());
+
+		return foundFiles.sort((a, b) => a.localeCompare(b));
+	}
+
+	private async getMboxInputs(): Promise<MboxInput[]> {
+		const filePath = this.getFilePath();
+		if (!filePath) {
+			throw Error('Mbox file or folder path not provided.');
+		}
+
+		if (this.credentials.localFilePath) {
+			let stats;
+			try {
+				stats = await fs.stat(this.credentials.localFilePath);
+			} catch {
+				throw Error(
+					`Mbox file or folder not found at path: ${this.credentials.localFilePath}`
+				);
+			}
+
+			if (stats.isDirectory()) {
+				const mboxFiles = await this.findLocalMboxFiles(this.credentials.localFilePath);
+				if (mboxFiles.length === 0) {
+					throw Error(
+						`No .mbox files found under directory: ${this.credentials.localFilePath}`
+					);
+				}
+
+				return mboxFiles.map((mboxFilePath) => ({
+					filePath: mboxFilePath,
+					sourcePath: this.toSourcePath(
+						relative(this.credentials.localFilePath!, mboxFilePath)
+					),
+					isLocal: true,
+				}));
+			}
+
+			if (!stats.isFile()) {
+				throw Error(
+					`Mbox path is not a file or directory: ${this.credentials.localFilePath}`
+				);
+			}
+
+			if (!this.isMboxPath(this.credentials.localFilePath)) {
+				throw Error('Provided local file is not in the MBOX format.');
+			}
+
+			return [{ filePath: this.credentials.localFilePath, sourcePath: '', isLocal: true }];
+		}
+
+		if (!this.isMboxPath(filePath)) {
+			throw Error('Provided file is not in the MBOX format.');
+		}
+
+		const fileExists = await this.storage.exists(filePath);
+		if (!fileExists) {
+			throw Error(
+				'Uploaded Mbox file not found. The upload may not have finished yet, or it failed.'
+			);
+		}
+
+		return [{ filePath, sourcePath: '', isLocal: false }];
+	}
+
+	private async getFileStream(input: MboxInput): Promise<NodeJS.ReadableStream> {
+		if (input.isLocal) {
+			return createReadStream(input.filePath);
+		}
+		return this.storage.getStream(input.filePath);
 	}
 
 	public async *listAllUsers(): AsyncGenerator<MailboxUser> {
@@ -131,8 +201,7 @@ export class MboxConnector implements IEmailConnector {
 			return this.credentials.uploadedFileName;
 		}
 		if (this.credentials.localFilePath) {
-			const parts = this.credentials.localFilePath.split('/');
-			return parts[parts.length - 1].replace('.mbox', '');
+			return this.stripMboxExtension(basename(this.credentials.localFilePath));
 		}
 		return `mbox-import-${new Date().getTime()}`;
 	}
@@ -141,29 +210,35 @@ export class MboxConnector implements IEmailConnector {
 		userEmail: string,
 		syncState?: SyncState | null
 	): AsyncGenerator<EmailObject | null> {
-		const filePath = this.getFilePath();
-		const fileStream = await this.getFileStream();
-		const mboxSplitter = new MboxSplitter();
-		const emailStream = fileStream.pipe(mboxSplitter);
+		const inputs = await this.getMboxInputs();
 
-		for await (const emailBuffer of emailStream) {
-			try {
-				const emailObject = await this.parseMessage(emailBuffer as Buffer, '');
-				yield emailObject;
-			} catch (error) {
-				logger.error(
-					{ error, file: filePath },
-					'Failed to process a single message from mbox file. Skipping.'
-				);
+		for (const input of inputs) {
+			const fileStream = await this.getFileStream(input);
+			const mboxSplitter = new MboxSplitter();
+			const emailStream = fileStream.pipe(mboxSplitter);
+
+			for await (const emailBuffer of emailStream) {
+				try {
+					const emailObject = await this.parseMessage(
+						emailBuffer as Buffer,
+						input.sourcePath
+					);
+					yield emailObject;
+				} catch (error) {
+					logger.error(
+						{ error, file: input.filePath },
+						'Failed to process a single message from mbox file. Skipping.'
+					);
+				}
 			}
 		}
 
 		if (this.credentials.uploadedFilePath && !this.credentials.localFilePath) {
 			try {
-				await this.storage.delete(filePath);
+				await this.storage.delete(this.credentials.uploadedFilePath);
 			} catch (error) {
 				logger.error(
-					{ error, file: filePath },
+					{ error, file: this.credentials.uploadedFilePath },
 					'Failed to delete mbox file after processing.'
 				);
 			}
@@ -237,7 +312,7 @@ export class MboxConnector implements IEmailConnector {
 		// Gmail uses 'X-Gmail-Labels', and other clients like Thunderbird may use 'X-Folder'.
 		const gmailLabels = parsedEmail.headers.get('x-gmail-labels');
 		const folderHeader = parsedEmail.headers.get('x-folder');
-		let finalPath = '';
+		let finalPath = path;
 
 		if (gmailLabels && typeof gmailLabels === 'string') {
 			// We take the first label as the primary folder.

@@ -192,17 +192,21 @@ After successfully deploying and logging into Open Archiver, the next step is to
 
 ## Updating Your Installation
 
-To update your Open Archiver instance to the latest version, run the following commands:
+When a new Docker image has been published, update your running local instance with:
 
 ```bash
-# Pull the latest changes from the repository
 git pull
-
-# Pull the latest Docker images
 docker compose pull
-
-# Restart the services with the new images
 docker compose up -d
+docker compose ps
+```
+
+This recreates containers that have changed while preserving the Docker volumes that hold your database, search index, queue data, and archived files.
+
+To watch the application restart, run:
+
+```bash
+docker compose logs -f open-archiver
 ```
 
 ## Deploying on Coolify

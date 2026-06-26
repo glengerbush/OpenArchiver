@@ -83,6 +83,23 @@ Open Archiver is built on a modern, scalable, and maintainable technology stack:
 3.  **Access the application:**
     Once the services are running, you can access the Open Archiver web interface by navigating to `http://127.0.0.1:3000` in your web browser.
 
+### Updating A Running Local Install
+
+When a new Docker image has been published, update the running local stack with:
+
+```bash
+git pull
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+This preserves the Docker volumes that hold your database, search index, queue data, and archived files. To watch the app restart, run:
+
+```bash
+docker compose logs -f open-archiver
+```
+
 ## Data Source Configuration
 
 After deploying the application, you will need to configure one or more ingestion sources to begin archiving emails. Or you can import .mbox, .eml, or .pst. Follow detailed guides to connect to your email provider:

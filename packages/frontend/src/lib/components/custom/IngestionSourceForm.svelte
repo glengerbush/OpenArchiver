@@ -441,7 +441,7 @@
 				<Input
 					id="mbox-local-path"
 					bind:value={formData.providerConfig.localFilePath}
-					placeholder="/path/to/file.mbox"
+					placeholder="/path/to/file-or-folder"
 					class="col-span-3"
 				/>
 			</div>
